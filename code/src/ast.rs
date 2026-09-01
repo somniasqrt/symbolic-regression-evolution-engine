@@ -1,5 +1,6 @@
 pub type NodePtr = Box<Node>;
 
+#[derive(Clone, Debug)]
 pub enum Node {
     // Leafs
     Var,
@@ -88,4 +89,21 @@ impl Node {
     pub fn log(left: Node, right: Node) -> Node {
         Node::Log(Box::new(left), Box::new(right))
     }    
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_evaluate_add_pow() {
+        // 2^x + x
+        let equation = Node::add(Node::pow(Node::Const(2.0), Node::Var), Node::Var);
+        
+        let x = 3.0;
+        let expected = 11.0;
+        let result = equation.evaluate(x);
+
+        assert_eq!(result, expected, "evaluation of 2^x + x failed for x=3.0");
+    }
 }
