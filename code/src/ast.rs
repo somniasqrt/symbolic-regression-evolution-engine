@@ -1,109 +1,146 @@
+use std::{fmt::{Display}, ops::Range};
+
+use rand::{Rng, RngExt, random_range, rng};
+
 pub type NodePtr = Box<Node>;
 
 #[derive(Clone, Debug)]
 pub enum Node {
-    // Leafs
     Var,
     Const(f64),
-    
-    // Unary
-    Neg(NodePtr),
-    Abs(NodePtr),
-    Sin(NodePtr),
-    Cos(NodePtr),
-    Tan(NodePtr),
-    Cot(NodePtr),
-    
-    // Binary
-    Add(NodePtr, NodePtr),
-    Sub(NodePtr, NodePtr),
-    Mul(NodePtr, NodePtr),
-    Div(NodePtr, NodePtr),
-    Pow(NodePtr, NodePtr),
-    Log(NodePtr, NodePtr),
+    Unary(UnaryOp, NodePtr),
+    Binary(BinaryOp, NodePtr, NodePtr),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum UnaryOp {
+    Neg,
+    Abs,
+    Sin,
+    Cos,
+    Tan,
+    Cot,
+}
+
+impl UnaryOp {
+    pub fn evaluate(self, val: f64) -> f64 {
+        match self {
+            UnaryOp::Neg => -val,
+            UnaryOp::Abs => val.abs(),
+            UnaryOp::Sin => val.sin(),
+            UnaryOp::Cos => val.cos(),
+            UnaryOp::Tan => val.tan(),
+            UnaryOp::Cot => 1.0 / val.tan(),
+        }
+    }
+    pub fn symbol(self) -> &'static str {
+        match self {
+            UnaryOp::Neg => "-",
+            UnaryOp::Abs => "abs",
+            UnaryOp::Sin => "sin",
+            UnaryOp::Cos => "cos",
+            UnaryOp::Tan => "tan",
+            UnaryOp::Cot => "cot",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+    Log,
+}
+impl BinaryOp {
+    pub fn evaluate(self, left: f64, right: f64) -> f64 {
+        match self {
+            BinaryOp::Add => left + right,
+            BinaryOp::Sub => left - right,
+            BinaryOp::Mul => left * right,
+            BinaryOp::Div => left / right,
+            BinaryOp::Pow => left.powf(right),
+            BinaryOp::Log => right.log(left),
+        }
+    }
+    pub fn symbol(self) -> &'static str {
+        match self {
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Pow => "^",
+            BinaryOp::Log => "log",
+        }
+    }
 }
 
 impl Node {
 
-    pub fn evaluate(&self, val: f64) -> f64 {
+    pub fn evaluate(&self, var: f64) -> f64 {
         match self {
-            // Leafs
-            Node::Var => val,
-            Node::Const(node) => *node,
-
-            // Unary
-            Node::Neg(node) => -node.evaluate(val),
-            Node::Abs(node) => node.evaluate(val).abs(),
-            Node::Sin(node) => node.evaluate(val).sin(),
-            Node::Cos(node) => node.evaluate(val).cos(),
-            Node::Tan(node) => node.evaluate(val).tan(),
-            Node::Cot(node) => 1.0 / node.evaluate(val).tan(),
-
-            // Binary
-            Node::Add(left, right) => left.evaluate(val) + right.evaluate(val),
-            Node::Sub(left, right) => left.evaluate(val) - right.evaluate(val),
-            Node::Mul(left, right) => left.evaluate(val) * right.evaluate(val),
-            Node::Div(left, right) => left.evaluate(val) / right.evaluate(val),
-            Node::Pow(left, right) => left.evaluate(val).powf(right.evaluate(val)),
-            Node::Log(left, right) => right.evaluate(val).log(left.evaluate(val)),
-
+            Node::Var => var,
+            Node::Const(val) => *val,
+            Node::Unary(op, node) => op.evaluate(node.evaluate(var)),
+            Node::Binary(op, node, node1) => op.evaluate(node.evaluate(var), node1.evaluate(var)),
         }
     }
 
-    // Unary ops
-    pub fn neg(node: Node) -> Node {
-        Node::Neg(Box::new(node))
+    pub fn generate_random_tree(rng: &mut impl Rng, current_depth: usize, max_depth: &usize, const_range: &Range<f64>) -> Node {
+        todo!()
+    }   
+
+    pub fn unary(op: UnaryOp, node: Node) -> Node {
+        Node::Unary(op, Box::new(node))
     }
-    pub fn abs(node: Node) -> Node {
-        Node::Abs(Box::new(node))
+    pub fn binary(op: BinaryOp, node: Node, node1: Node) -> Node {
+        Node::Binary(op, Box::new(node), Box::new(node1))
     }
-    pub fn sin(node: Node) -> Node {
-        Node::Sin(Box::new(node))
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Node::Var => write!(f, "x"),
+            Node::Const(val) => write!(f, "{:.4}", val),
+            Node::Unary(op, node) => write!(f, "{}({})", op.symbol(), node),
+            Node::Binary(op, node, node1) => write!(f, "({} {} {})", node, op.symbol(), node1),
+        }
     }
-    pub fn cos(node: Node) -> Node {
-        Node::Cos(Box::new(node))
-    }
-    pub fn tan(node: Node) -> Node {
-        Node::Tan(Box::new(node))
-    }
-    pub fn cot(node: Node) -> Node {
-        Node::Cot(Box::new(node))
-    }
-    
-    // Binary ops
-    pub fn add(left: Node, right: Node) -> Node {
-        Node::Add(Box::new(left), Box::new(right))
-    }
-    pub fn sub(left: Node, right: Node) -> Node {
-        Node::Sub(Box::new(left), Box::new(right))
-    }
-    pub fn mul(left: Node, right: Node) -> Node {
-        Node::Mul(Box::new(left), Box::new(right))
-    }
-    pub fn div(left: Node, right: Node) -> Node {
-        Node::Div(Box::new(left), Box::new(right))
-    }
-    pub fn pow(left: Node, right: Node) -> Node {
-        Node::Pow(Box::new(left), Box::new(right))
-    }
-    pub fn log(left: Node, right: Node) -> Node {
-        Node::Log(Box::new(left), Box::new(right))
-    }    
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::ast::Node::{Const, Var};
+
+use super::*;
 
     #[test]
-    fn test_evaluate_add_pow() {
+    fn test_node_display() {
+        let equation = Node::binary(BinaryOp::Add, Node::binary(BinaryOp::Pow, Const(2.0), Var), Var);
+
+        let expected = String::from("((2.0000 ^ x) + x)");
+        let result = format!("{}", equation);
+
+        assert_eq!(result, expected, "node display failed for ((2.0000 ^ x) + x)")
+        
+    }
+
+    #[test]
+    fn test_evaluate() {
         // 2^x + x
-        let equation = Node::add(Node::pow(Node::Const(2.0), Node::Var), Node::Var);
+        let equation = Node::binary(BinaryOp::Add, Node::binary(BinaryOp::Pow, Const(2.0), Var), Var);
         
         let x = 3.0;
         let expected = 11.0;
         let result = equation.evaluate(x);
 
         assert_eq!(result, expected, "evaluation of 2^x + x failed for x=3.0");
+    }
+    
+    #[test]
+    fn test_generate_random_tree() {
+        // let tree = Node::generate_random_tree(&mut rng(), 0, 2, )
     }
 }
