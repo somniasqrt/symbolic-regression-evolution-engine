@@ -13,6 +13,12 @@ pub enum Node {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub enum TreeGrowMethon {
+    Grow,
+    Full
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum UnaryOp {
     Neg,
     Abs,
@@ -23,27 +29,35 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
+
+    pub const ALL: [UnaryOp; 6] = [UnaryOp::Neg, UnaryOp::Abs, UnaryOp::Sin, UnaryOp::Cos, UnaryOp::Tan, UnaryOp::Cot,];
+        
     pub fn evaluate(self, val: f64) -> f64 {
         match self {
-            UnaryOp::Neg => -val,
-            UnaryOp::Abs => val.abs(),
-            UnaryOp::Sin => val.sin(),
-            UnaryOp::Cos => val.cos(),
-            UnaryOp::Tan => val.tan(),
-            UnaryOp::Cot => 1.0 / val.tan(),
+            Self::Neg => -val,
+            Self::Abs => val.abs(),
+            Self::Sin => val.sin(),
+            Self::Cos => val.cos(),
+            Self::Tan => val.tan(),
+            Self::Cot => 1.0 / val.tan(),
         }
     }
     pub fn symbol(self) -> &'static str {
         match self {
-            UnaryOp::Neg => "-",
-            UnaryOp::Abs => "abs",
-            UnaryOp::Sin => "sin",
-            UnaryOp::Cos => "cos",
-            UnaryOp::Tan => "tan",
-            UnaryOp::Cot => "cot",
+            Self::Neg => "-",
+            Self::Abs => "abs",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Cot => "cot",
         }
     }
+
+    pub fn random(rng: &mut impl Rng) -> Self {
+        Self::ALL[rng.random_range(0..Self::ALL.len())]
+    }
 }
+
 #[derive(Clone, Copy, Debug)]
 pub enum BinaryOp {
     Add,
@@ -54,29 +68,39 @@ pub enum BinaryOp {
     Log,
 }
 impl BinaryOp {
+
+    pub const ALL: [BinaryOp; 6] = [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div, BinaryOp::Pow, BinaryOp::Log,];
+        
     pub fn evaluate(self, left: f64, right: f64) -> f64 {
         match self {
-            BinaryOp::Add => left + right,
-            BinaryOp::Sub => left - right,
-            BinaryOp::Mul => left * right,
-            BinaryOp::Div => left / right,
-            BinaryOp::Pow => left.powf(right),
-            BinaryOp::Log => right.log(left),
+            Self::Add => left + right,
+            Self::Sub => left - right,
+            Self::Mul => left * right,
+            Self::Div => left / right,
+            Self::Pow => left.powf(right),
+            Self::Log => right.log(left),
         }
     }
+    
     pub fn symbol(self) -> &'static str {
         match self {
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::Div => "/",
-            BinaryOp::Pow => "^",
-            BinaryOp::Log => "log",
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Pow => "^",
+            Self::Log => "log",
         }
+    }
+    
+    pub fn random(rng: &mut impl Rng) -> Self {
+        Self::ALL[rng.random_range(0..Self::ALL.len())]
     }
 }
 
 impl Node {
+
+    pub const LENGTH: u32 = 14;
 
     pub fn evaluate(&self, var: f64) -> f64 {
         match self {
@@ -87,10 +111,30 @@ impl Node {
         }
     }
 
-    pub fn generate_random_tree(rng: &mut impl Rng, current_depth: usize, max_depth: &usize, const_range: &Range<f64>) -> Node {
-        todo!()
+    pub fn generate_random_tree(rng: &mut impl Rng, current_depth: usize, max_depth: usize, const_range: (f64, f64)) -> Node {
+        if current_depth >= max_depth {
+            match rng.random_bool(0.5) {
+                true => Node::Var,
+                false => Node::Const(rng.random_range(const_range.0..const_range.1)),
+            }
+        }
+        else {
+            match rng.random_bool(0.3){
+                true => {
+                    let op = UnaryOp::random(rng);
+                    let node = Node::generate_random_tree(rng, current_depth + 1, max_depth, const_range);
+                    Node::unary(op, node)
+                },
+                false => {
+                    let op = BinaryOp::random(rng);
+                    let node = Node::generate_random_tree(rng, current_depth + 1, max_depth, const_range);
+                    let node1 = Node::generate_random_tree(rng, current_depth + 1, max_depth, const_range);
+                    Node::binary(op, node, node1)
+                },
+            }
+        }
     }   
-
+    
     pub fn unary(op: UnaryOp, node: Node) -> Node {
         Node::Unary(op, Box::new(node))
     }
@@ -141,6 +185,7 @@ use super::*;
     
     #[test]
     fn test_generate_random_tree() {
-        // let tree = Node::generate_random_tree(&mut rng(), 0, 2, )
+        let tree = Node::generate_random_tree(&mut rng(), 0, 3, (-10.0, 10.0));
+        println!("{}", tree)
     }
 }
