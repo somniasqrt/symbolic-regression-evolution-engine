@@ -6,16 +6,15 @@ pub type NodePtr = Box<Node>;
 
 #[derive(Clone, Debug)]
 pub enum Node {
-    Var,
+    Var(usize),
     Const(f64),
     Unary(UnaryOp, NodePtr),
     Binary(BinaryOp, NodePtr, NodePtr),
-} 
+}
 
 pub const GROW_OPERATOR_PROB: f64 = 0.7;
 pub const BINARY_OP_PROB: f64 = 0.7;
 pub const VAR_PROB: f64 = 0.5;
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum TreeGenMethod {
@@ -28,6 +27,7 @@ pub struct TreeGenerator<'a, R: Rng> {
     ops: &'a OperatorSet,
     const_range: Range<f64>,
     max_depth: usize,
+    vars_len: usize,
 }
 
 pub struct OperatorSet {
@@ -68,11 +68,10 @@ impl UnaryOp {
             Self::Tan => val.tan(),
             Self::Cot => {
                 let t = val.tan();
-                if t.abs() > 1e-6 { 
-                    1.0 / t 
-                } 
-                else { 
-                    1.0 / (t.signum() * 1e-6) 
+                if t.abs() > 1e-6 {
+                    1.0 / t
+                } else {
+                    1.0 / (t.signum() * 1e-6)
                 }
             }
             Self::Ln => {
@@ -81,11 +80,8 @@ impl UnaryOp {
                 } else {
                     0.0
                 }
-            },
-            Self::Exp => {
-                val.clamp(-50.0, 50.0).exp()
-            },
-            
+            }
+            Self::Exp => val.clamp(-50.0, 50.0).exp(),
         }
     }
     pub fn symbol(self) -> &'static str {
@@ -97,7 +93,7 @@ impl UnaryOp {
             Self::Tan => "tan",
             Self::Cot => "cot",
             Self::Exp => "exp",
-            Self::Ln => "ln"
+            Self::Ln => "ln",
         }
     }
 
@@ -131,19 +127,17 @@ impl BinaryOp {
             Self::Div => {
                 if right.abs() > 1e-6 {
                     left / right
-                }
-                else {
+                } else {
                     left / (right.signum() * 1e-6)
                 }
-            },
+            }
             Self::Pow => {
                 if left.abs() > 1e-6 {
                     left.abs().powf(right).clamp(-1e12, 1e12)
+                } else {
+                    0.0
                 }
-                else {
-                    0.0 
-                }
-            },
+            }
         }
     }
 
@@ -165,12 +159,12 @@ impl BinaryOp {
 impl Node {
     pub const LENGTH: u32 = 14;
 
-    pub fn evaluate(&self, var: f64) -> f64 {
+    pub fn evaluate(&self, vars: &[f64]) -> f64 {
         match self {
-            Node::Var => var,
+            Node::Var(idx) => vars[*idx],
             Node::Const(val) => *val,
-            Node::Unary(op, node) => op.evaluate(node.evaluate(var)),
-            Node::Binary(op, node, node1) => op.evaluate(node.evaluate(var), node1.evaluate(var)),
+            Node::Unary(op, node) => op.evaluate(node.evaluate(vars)),
+            Node::Binary(op, node, node1) => op.evaluate(node.evaluate(vars), node1.evaluate(vars)),
         }
     }
 
@@ -188,45 +182,47 @@ impl Node {
                     //70% operator, 30% terminal
                     if generator.rng.random_bool(GROW_OPERATOR_PROB) {
                         Self::generate_operator(generator, method, current_depth)
-                    }
-                    else {
+                    } else {
                         Self::generate_terminal(generator)
                     }
-                },
+                }
             }
         }
     }
 
-    fn generate_operator(generator: &mut TreeGenerator<impl Rng>, method: &TreeGenMethod, current_depth: usize) -> Node {
+    fn generate_operator(
+        generator: &mut TreeGenerator<impl Rng>,
+        method: &TreeGenMethod,
+        current_depth: usize,
+    ) -> Node {
         // 70% binary, 30% unary
         if generator.rng.random_bool(BINARY_OP_PROB) {
             let ops = &generator.ops.binary;
             let op = ops[generator.rng.random_range(0..ops.len())];
             Node::binary(
-                op, 
-                Self::generate_random_tree(generator, method, current_depth + 1), 
-                Self::generate_random_tree(generator, method, current_depth + 1)
+                op,
+                Self::generate_random_tree(generator, method, current_depth + 1),
+                Self::generate_random_tree(generator, method, current_depth + 1),
             )
-        } 
-        else {
+        } else {
             let ops = &generator.ops.unary;
             let op = ops[generator.rng.random_range(0..ops.len())];
             Node::unary(
-                op, 
-                Self::generate_random_tree(generator, method, current_depth + 1)
+                op,
+                Self::generate_random_tree(generator, method, current_depth + 1),
             )
         }
     }
     fn generate_terminal(generator: &mut TreeGenerator<impl Rng>) -> Node {
         match generator.rng.random_bool(VAR_PROB) {
-            true => Node::Var,
+            true => Node::Var(generator.rng.random_range(0..generator.vars_len)),
             false => Node::Const(generator.rng.random_range(generator.const_range.clone())),
         }
     }
 
     pub fn count(&self) -> usize {
         match self {
-            Self::Var | Self::Const(_) => 1,
+            Self::Var(_) | Self::Const(_) => 1,
             Node::Unary(_, node) => node.count() + 1,
             Node::Binary(_, left, right) => left.count() + right.count() + 1,
         }
@@ -234,7 +230,7 @@ impl Node {
 
     pub fn depth(&self) -> usize {
         match self {
-            Self::Var | Self::Const(_) => 1,
+            Self::Var(_) | Self::Const(_) => 1,
             Node::Unary(_, node) => node.depth() + 1,
             Node::Binary(_, left, right) => left.depth().max(right.depth()) + 1,
         }
@@ -244,59 +240,70 @@ impl Node {
         self.replace_subtree_rec(&mut 0, target_index, &mut Some(new_subtree));
     }
 
-    fn replace_subtree_rec(&mut self, current_index: &mut usize, target_index: usize, new_subtree: &mut Option<Node>) -> bool {
+    fn replace_subtree_rec(
+        &mut self,
+        current_index: &mut usize,
+        target_index: usize,
+        new_subtree: &mut Option<Node>,
+    ) -> bool {
         if *current_index == target_index {
             *self = new_subtree.take().expect("already taken");
             return true;
-        }
-        else {
+        } else {
             *current_index += 1;
             match self {
-                Node::Var | Node::Const(_) => false,
-                Node::Unary(_, node) => node.replace_subtree_rec(current_index, target_index, new_subtree),
+                Node::Var(_) | Node::Const(_) => false,
+                Node::Unary(_, node) => {
+                    node.replace_subtree_rec(current_index, target_index, new_subtree)
+                }
                 Node::Binary(_, left, right) => {
-                    left.replace_subtree_rec(current_index, target_index, new_subtree) || right.replace_subtree_rec(current_index, target_index, new_subtree)
-                }, 
+                    left.replace_subtree_rec(current_index, target_index, new_subtree)
+                        || right.replace_subtree_rec(current_index, target_index, new_subtree)
+                }
             }
         }
     }
-    
+
     pub fn get_subtree(&self, target_index: usize) -> &Node {
-        self.get_subtree_rec(&mut 0, target_index).expect("index oun of bounds")
+        self.get_subtree_rec(&mut 0, target_index)
+            .expect("index oun of bounds")
     }
 
     fn get_subtree_rec(&self, current_index: &mut usize, target_index: usize) -> Option<&Node> {
         if *current_index == target_index {
             return Some(self);
-        }
-        else {
+        } else {
             *current_index += 1;
             match self {
-                Node::Var | Node::Const(_) => None,
+                Node::Var(_) | Node::Const(_) => None,
                 Node::Unary(_, node) => node.get_subtree_rec(current_index, target_index),
-                Node::Binary(_, left, right) => {
-                    left.get_subtree_rec(current_index, target_index).or_else(|| right.get_subtree_rec(current_index, target_index))
-                }
+                Node::Binary(_, left, right) => left
+                    .get_subtree_rec(current_index, target_index)
+                    .or_else(|| right.get_subtree_rec(current_index, target_index)),
             }
         }
     }
 
     pub fn get_subtree_mut(&mut self, target_index: usize) -> &mut Node {
-        self.get_subtree_mut_rec(&mut 0, target_index).expect("index out of bounds")
+        self.get_subtree_mut_rec(&mut 0, target_index)
+            .expect("index out of bounds")
     }
 
-    fn get_subtree_mut_rec(&mut self, current_index: &mut usize, target_index: usize) -> Option<&mut Node> {
+    fn get_subtree_mut_rec(
+        &mut self,
+        current_index: &mut usize,
+        target_index: usize,
+    ) -> Option<&mut Node> {
         if *current_index == target_index {
             return Some(self);
-        }
-        else {
+        } else {
             *current_index += 1;
             match self {
-                Node::Var | Node::Const(_) => None,
+                Node::Var(_) | Node::Const(_) => None,
                 Node::Unary(_, node) => node.get_subtree_mut_rec(current_index, target_index),
-                Node::Binary(_, left, right) => {
-                    left.get_subtree_mut_rec(current_index, target_index).or_else(|| right.get_subtree_mut_rec(current_index, target_index))
-                }
+                Node::Binary(_, left, right) => left
+                    .get_subtree_mut_rec(current_index, target_index)
+                    .or_else(|| right.get_subtree_mut_rec(current_index, target_index)),
             }
         }
     }
@@ -312,7 +319,7 @@ impl Node {
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Node::Var => write!(f, "x"),
+            Node::Var(idx) => write!(f, "v{}", idx),
             Node::Const(val) => write!(f, "{:.4}", val),
             Node::Unary(op, node) => match op {
                 UnaryOp::Abs => write!(f, "|{}|", node),
@@ -325,23 +332,23 @@ impl std::fmt::Display for Node {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::Node::{Const, Var};
     use super::*;
+    use crate::ast::Node::{Const, Var};
 
     #[test]
     fn test_node_display() {
         let equation = Node::binary(
             BinaryOp::Add,
-            Node::binary(BinaryOp::Pow, Const(2.0), Var),
-            Var,
+            Node::binary(BinaryOp::Pow, Const(2.0), Var(0)),
+            Var(0),
         );
 
-        let expected = String::from("((2.0000 ^ x) + x)");
+        let expected = String::from("((2.0000 ^ v0) + v0)");
         let result = format!("{}", equation);
 
         assert_eq!(
             result, expected,
-            "node display failed for ((2.0000 ^ x) + x)"
+            "node display failed for ((2.0000 ^ v0) + v0)"
         )
     }
 
@@ -350,15 +357,15 @@ mod tests {
         // 2^x + x
         let equation = Node::binary(
             BinaryOp::Add,
-            Node::binary(BinaryOp::Pow, Const(2.0), Var),
-            Var,
+            Node::binary(BinaryOp::Pow, Const(2.0), Var(0)),
+            Var(0),
         );
 
         let x = 3.0;
         let expected = 11.0;
-        let result = equation.evaluate(x);
+        let result = equation.evaluate(&[x]);
 
-        assert_eq!(result, expected, "evaluation of 2^x + x failed for x=3.0");
+        assert_eq!(result, expected, "evaluation of 2^v0 + x failed for v0=3.0");
     }
 
     #[test]
@@ -373,69 +380,76 @@ mod tests {
             ops: &ops,
             const_range: -10.0..10.0,
             max_depth: 3,
+            vars_len: 1,
         };
-        let tree_full= Node::generate_random_tree(&mut generator, &TreeGenMethod::Full, 0);
+        let tree_full = Node::generate_random_tree(&mut generator, &TreeGenMethod::Full, 0);
         println!("tree_full -> {}", tree_full);
         let tree_grow = Node::generate_random_tree(&mut generator, &TreeGenMethod::Grow, 0);
         println!("tree_grow -> {}", tree_grow);
     }
-    
-    #[test] 
+
+    #[test]
     fn test_count() {
-        let tree = Node::unary(UnaryOp::Sin, Node::binary(BinaryOp::Add, Node::Var, Node::Const(2.0)));
+        let tree = Node::unary(
+            UnaryOp::Sin,
+            Node::binary(BinaryOp::Add, Node::Var(0), Node::Const(2.0)),
+        );
         assert_eq!(tree.count(), 4);
     }
-    
-    #[test] 
+
+    #[test]
     fn test_depth() {
-        let tree = Node::unary(UnaryOp::Sin, Node::binary(BinaryOp::Add, Node::Var, Node::Const(2.0)));
+        let tree = Node::unary(
+            UnaryOp::Sin,
+            Node::binary(BinaryOp::Add, Node::Var(0), Node::Const(2.0)),
+        );
         assert_eq!(tree.depth(), 3);
     }
-    
+
     #[test]
     fn test_get_subtree() {
         // 2^x + x
         let tree = Node::binary(
             BinaryOp::Add,
-            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var),
-            Node::Var,
+            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var(0)),
+            Node::Var(0),
         );
-        assert_eq!(format!("{}", tree.get_subtree(0)), "((2.0000 ^ x) + x)");
-        assert_eq!(format!("{}", tree.get_subtree(1)), "(2.0000 ^ x)");
+        assert_eq!(format!("{}", tree.get_subtree(0)), "((2.0000 ^ v0) + v0)");
+        assert_eq!(format!("{}", tree.get_subtree(1)), "(2.0000 ^ v0)");
         assert_eq!(format!("{}", tree.get_subtree(2)), "2.0000");
     }
-    
+
     #[test]
     fn test_get_subtree_mut() {
         // 2^x + x
         let mut tree = Node::binary(
             BinaryOp::Add,
-            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var),
-            Node::Var,
+            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var(0)),
+            Node::Var(0),
         );
         if let Node::Binary(op, _, _) = tree.get_subtree_mut(0) {
             *op = BinaryOp::Mul;
         }
-        assert_eq!(format!("{}", tree), "((2.0000 ^ x) * x)");
+        assert_eq!(format!("{}", tree), "((2.0000 ^ v0) * v0)");
         if let Node::Const(val) = tree.get_subtree_mut(2) {
             *val = 7.5;
         }
-        assert_eq!(format!("{}", tree), "((7.5000 ^ x) * x)");
+        assert_eq!(format!("{}", tree), "((7.5000 ^ v0) * v0)");
     }
-    
+
     #[test]
     fn test_replace_subtree() {
         // 2^x + x
         let mut tree = Node::binary(
             BinaryOp::Add,
-            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var),
-            Node::Var,
+            Node::binary(BinaryOp::Pow, Node::Const(2.0), Node::Var(0)),
+            Node::Var(0),
         );
         tree.replace_subtree(2, Node::Const(5.0));
-        assert_eq!(format!("{}", tree), "((5.0000 ^ x) + x)");
-        tree.replace_subtree(1, Node::unary(UnaryOp::Sin, Node::Var));
-        assert_eq!(format!("{}", tree), "(sin(x) + x)");
-        tree.replace_subtree(0, Node::Var);
-        assert_eq!(format!("{}", tree), "x");
+        assert_eq!(format!("{}", tree), "((5.0000 ^ v0) + v0)");
+        tree.replace_subtree(1, Node::unary(UnaryOp::Sin, Node::Var(0)));
+        assert_eq!(format!("{}", tree), "(sin(v0) + v0)");
+        tree.replace_subtree(0, Node::Var(0));
+        assert_eq!(format!("{}", tree), "v0");
     }
 }
