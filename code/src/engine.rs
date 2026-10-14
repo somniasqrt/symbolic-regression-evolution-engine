@@ -25,7 +25,7 @@ impl Individual {
                 .zip(dataset.outputs
                     .iter())
                 .map(|(i, o)| {
-                    let pred = self.node.evaluate(i[0]); // TODO: MULTIVARIABLE
+                    let pred = self.node.evaluate(i); // TODO: MULTIVARIABLE
                     let err = pred - o;
                     err * err
                 }).sum::<f64>();
@@ -89,7 +89,7 @@ mod tests {
         ).expect("Valid dataset");
 
         // 2.0 * x
-        let tree = Node::binary(BinaryOp::Mul, Node::Const(2.0), Node::Var);
+        let tree = Node::binary(BinaryOp::Mul, Node::Const(2.0), Node::Var(0));
         let mut ind = Individual::new(tree);
         ind.evaluate_fitness(&dataset);
 
@@ -108,7 +108,7 @@ mod tests {
         // Model x -> predictions: [1.0, 2.0, 3.0]
         // Errors (2-1)^2 = 1, (4-2)^2 = 4, (6-3)^2 = 9
         // MSE = (1 + 4 + 9) / 3 = 14 / 3 ~ 4.6666667
-        let tree = Node::Var;
+        let tree = Node::Var(0);
         let mut ind = Individual::new(tree);
         ind.evaluate_fitness(&dataset);
 
