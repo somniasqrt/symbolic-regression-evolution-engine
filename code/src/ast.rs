@@ -10,8 +10,7 @@ pub enum Node {
     Const(f64),
     Unary(UnaryOp, NodePtr),
     Binary(BinaryOp, NodePtr, NodePtr),
-}
-
+} 
 
 pub const GROW_OPERATOR_PROB: f64 = 0.7;
 pub const BINARY_OP_PROB: f64 = 0.7;
@@ -326,10 +325,7 @@ impl std::fmt::Display for Node {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
-
-use crate::ast::Node::{Const, Var};
-
+    use crate::ast::Node::{Const, Var};
     use super::*;
 
     #[test]

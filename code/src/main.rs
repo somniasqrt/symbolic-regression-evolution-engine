@@ -5,6 +5,7 @@ use rand::rng;
 use crate::ast::{BinaryOp, Node};
 
 mod ast;
+mod engine;
 
 
 fn main() {
