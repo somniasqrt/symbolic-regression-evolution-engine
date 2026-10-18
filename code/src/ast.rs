@@ -1,4 +1,4 @@
-use std::ops::{Deref, Range};
+use std::ops::Range;
 
 use rand::{Rng, RngExt};
 
@@ -65,7 +65,7 @@ impl UnaryOp {
             Self::Abs => val.abs(),
             Self::Sin => val.sin(),
             Self::Cos => val.cos(),
-            Self::Tan => val.tan(),
+            Self::Tan => val.tan().clamp(-1e12, 1e12),
             Self::Cot => {
                 let t = val.tan();
                 if t.abs() > 1e-6 {
@@ -132,11 +132,13 @@ impl BinaryOp {
                 }
             }
             Self::Pow => {
-                if left.abs() > 1e-6 {
-                    left.abs().powf(right).clamp(-1e12, 1e12)
+                let r = left.powf(right);
+                let r = if r.is_nan() {
+                    left.abs().powf(right)
                 } else {
-                    0.0
-                }
+                    r
+                };
+                r.clamp(-1e12, 1e12)
             }
         }
     }
@@ -157,8 +159,6 @@ impl BinaryOp {
 }
 
 impl Node {
-    pub const LENGTH: u32 = 14;
-
     pub fn evaluate(&self, vars: &[f64]) -> f64 {
         match self {
             Node::Var(idx) => vars[*idx],
@@ -180,7 +180,7 @@ impl Node {
                 TreeGenMethod::Full => Self::generate_operator(generator, method, current_depth),
                 TreeGenMethod::Grow => {
                     //70% operator, 30% terminal
-                    if generator.rng.random_bool(GROW_OPERATOR_PROB) {
+                    if current_depth == 1 || generator.rng.random_bool(GROW_OPERATOR_PROB) {
                         Self::generate_operator(generator, method, current_depth)
                     } else {
                         Self::generate_terminal(generator)
@@ -237,7 +237,8 @@ impl Node {
     }
 
     pub fn replace_subtree(&mut self, target_index: usize, new_subtree: Node) {
-        self.replace_subtree_rec(&mut 0, target_index, &mut Some(new_subtree));
+        let found = self.replace_subtree_rec(&mut 0, target_index, &mut Some(new_subtree));
+        assert!(found, "index out of bounds");
     }
 
     fn replace_subtree_rec(
@@ -266,7 +267,7 @@ impl Node {
 
     pub fn get_subtree(&self, target_index: usize) -> &Node {
         self.get_subtree_rec(&mut 0, target_index)
-            .expect("index oun of bounds")
+            .expect("index out of bounds")
     }
 
     fn get_subtree_rec(&self, current_index: &mut usize, target_index: usize) -> Option<&Node> {
@@ -368,8 +369,7 @@ mod tests {
         assert_eq!(result, expected, "evaluation of 2^v0 + x failed for v0=3.0");
     }
 
-    #[test]
-    fn test_generate_random_tree() {
+    fn with_generator(max_depth: usize, f: impl FnOnce(&mut TreeGenerator<rand::rngs::ThreadRng>)) {
         let mut rng = rand::rng();
         let ops = OperatorSet {
             unary: UnaryOp::ALL.to_vec(),
@@ -379,13 +379,51 @@ mod tests {
             rng: &mut rng,
             ops: &ops,
             const_range: -10.0..10.0,
-            max_depth: 3,
-            vars_len: 1,
+            max_depth,
+            vars_len: 2,
         };
-        let tree_full = Node::generate_random_tree(&mut generator, &TreeGenMethod::Full, 0);
-        println!("tree_full -> {}", tree_full);
-        let tree_grow = Node::generate_random_tree(&mut generator, &TreeGenMethod::Grow, 0);
-        println!("tree_grow -> {}", tree_grow);
+        f(&mut generator);
+    }
+
+    #[test]
+    fn test_generate_full_tree() {
+        for max_depth in 1..=6 {
+            with_generator(max_depth, |generator| {
+                for _ in 0..50 {
+                    let tree = Node::generate_random_tree(generator, &TreeGenMethod::Full, 1);
+                    assert_eq!(tree.depth(), max_depth, "max_depth={max_depth}: {tree}");
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn test_generate_grow_tree() {
+        for max_depth in 1..=6 {
+            with_generator(max_depth, |generator| {
+                for _ in 0..50 {
+                    let tree = Node::generate_random_tree(generator, &TreeGenMethod::Grow, 1);
+                    let min_depth = max_depth.min(2);
+                    assert!(
+                        (min_depth..=max_depth).contains(&tree.depth()),
+                        "max_depth={max_depth}: {tree}"
+                    );
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn test_protected_ops() {
+        assert!(BinaryOp::Div.evaluate(1.0, 0.0).is_finite());
+        assert_eq!(BinaryOp::Pow.evaluate(0.0, 0.0), 1.0);
+        assert_eq!(BinaryOp::Pow.evaluate(-2.0, 2.0), 4.0);
+        assert_eq!(BinaryOp::Pow.evaluate(-4.0, 0.5), 2.0);
+        assert_eq!(BinaryOp::Pow.evaluate(0.0, -1.0), 1e12);
+        assert_eq!(BinaryOp::Pow.evaluate(10.0, 400.0), 1e12);
+        assert!(UnaryOp::Cot.evaluate(0.0).is_finite());
+        assert_eq!(UnaryOp::Ln.evaluate(0.0), 0.0);
+        assert!(UnaryOp::Exp.evaluate(1e6).is_finite());
     }
 
     #[test]
