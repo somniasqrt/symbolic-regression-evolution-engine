@@ -4,158 +4,16 @@ use rand::{Rng, RngExt};
 
 pub type NodePtr = Box<Node>;
 
+pub const GROW_OPERATOR_PROB: f64 = 0.7;
+pub const BINARY_OP_PROB: f64 = 0.7;
+pub const VAR_PROB: f64 = 0.5;
+
 #[derive(Clone, Debug)]
 pub enum Node {
     Var(usize),
     Const(f64),
     Unary(UnaryOp, NodePtr),
     Binary(BinaryOp, NodePtr, NodePtr),
-}
-
-pub const GROW_OPERATOR_PROB: f64 = 0.7;
-pub const BINARY_OP_PROB: f64 = 0.7;
-pub const VAR_PROB: f64 = 0.5;
-
-#[derive(Clone, Copy, Debug)]
-pub enum TreeGenMethod {
-    Grow,
-    Full,
-}
-
-pub struct TreeGenerator<'a, R: Rng> {
-    rng: &'a mut R,
-    ops: &'a OperatorSet,
-    const_range: Range<f64>,
-    max_depth: usize,
-    vars_len: usize,
-}
-
-pub struct OperatorSet {
-    unary: Vec<UnaryOp>,
-    binary: Vec<BinaryOp>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum UnaryOp {
-    Neg,
-    Abs,
-    Sin,
-    Cos,
-    Tan,
-    Cot,
-    Exp,
-    Ln,
-}
-
-impl UnaryOp {
-    pub const ALL: [UnaryOp; 8] = [
-        UnaryOp::Neg,
-        UnaryOp::Abs,
-        UnaryOp::Sin,
-        UnaryOp::Cos,
-        UnaryOp::Tan,
-        UnaryOp::Cot,
-        UnaryOp::Exp,
-        UnaryOp::Ln,
-    ];
-
-    pub fn evaluate(self, val: f64) -> f64 {
-        match self {
-            Self::Neg => -val,
-            Self::Abs => val.abs(),
-            Self::Sin => val.sin(),
-            Self::Cos => val.cos(),
-            Self::Tan => val.tan().clamp(-1e12, 1e12),
-            Self::Cot => {
-                let t = val.tan();
-                if t.abs() > 1e-6 {
-                    1.0 / t
-                } else {
-                    1.0 / (t.signum() * 1e-6)
-                }
-            }
-            Self::Ln => {
-                if val.abs() > 1e-9 {
-                    val.abs().ln()
-                } else {
-                    0.0
-                }
-            }
-            Self::Exp => val.clamp(-50.0, 50.0).exp(),
-        }
-    }
-    pub fn symbol(self) -> &'static str {
-        match self {
-            Self::Neg => "-",
-            Self::Abs => "",
-            Self::Sin => "sin",
-            Self::Cos => "cos",
-            Self::Tan => "tan",
-            Self::Cot => "cot",
-            Self::Exp => "exp",
-            Self::Ln => "ln",
-        }
-    }
-
-    pub fn random(rng: &mut impl Rng) -> Self {
-        Self::ALL[rng.random_range(0..Self::ALL.len())]
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Pow,
-}
-impl BinaryOp {
-    pub const ALL: [BinaryOp; 5] = [
-        BinaryOp::Add,
-        BinaryOp::Sub,
-        BinaryOp::Mul,
-        BinaryOp::Div,
-        BinaryOp::Pow,
-    ];
-
-    pub fn evaluate(self, left: f64, right: f64) -> f64 {
-        match self {
-            Self::Add => left + right,
-            Self::Sub => left - right,
-            Self::Mul => left * right,
-            Self::Div => {
-                if right.abs() > 1e-6 {
-                    left / right
-                } else {
-                    left / (right.signum() * 1e-6)
-                }
-            }
-            Self::Pow => {
-                let r = left.powf(right);
-                let r = if r.is_nan() {
-                    left.abs().powf(right)
-                } else {
-                    r
-                };
-                r.clamp(-1e12, 1e12)
-            }
-        }
-    }
-
-    pub fn symbol(self) -> &'static str {
-        match self {
-            Self::Add => "+",
-            Self::Sub => "-",
-            Self::Mul => "*",
-            Self::Div => "/",
-            Self::Pow => "^",
-        }
-    }
-
-    pub fn random(rng: &mut impl Rng) -> Self {
-        Self::ALL[rng.random_range(0..Self::ALL.len())]
-    }
 }
 
 impl Node {
@@ -249,7 +107,7 @@ impl Node {
     ) -> bool {
         if *current_index == target_index {
             *self = new_subtree.take().expect("already taken");
-            return true;
+            true
         } else {
             *current_index += 1;
             match self {
@@ -272,7 +130,7 @@ impl Node {
 
     fn get_subtree_rec(&self, current_index: &mut usize, target_index: usize) -> Option<&Node> {
         if *current_index == target_index {
-            return Some(self);
+            Some(self)
         } else {
             *current_index += 1;
             match self {
@@ -296,7 +154,7 @@ impl Node {
         target_index: usize,
     ) -> Option<&mut Node> {
         if *current_index == target_index {
-            return Some(self);
+            Some(self)
         } else {
             *current_index += 1;
             match self {
@@ -329,6 +187,149 @@ impl std::fmt::Display for Node {
             Node::Binary(op, node, node1) => write!(f, "({} {} {})", node, op.symbol(), node1),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum UnaryOp {
+    Neg,
+    Abs,
+    Sin,
+    Cos,
+    Tan,
+    Cot,
+    Exp,
+    Ln,
+}
+
+impl UnaryOp {
+    pub const ALL: [UnaryOp; 8] = [
+        UnaryOp::Neg,
+        UnaryOp::Abs,
+        UnaryOp::Sin,
+        UnaryOp::Cos,
+        UnaryOp::Tan,
+        UnaryOp::Cot,
+        UnaryOp::Exp,
+        UnaryOp::Ln,
+    ];
+
+    pub fn evaluate(self, val: f64) -> f64 {
+        match self {
+            Self::Neg => -val,
+            Self::Abs => val.abs(),
+            Self::Sin => val.sin(),
+            Self::Cos => val.cos(),
+            Self::Tan => val.tan().clamp(-1e12, 1e12),
+            Self::Cot => {
+                let t = val.tan();
+                if t.abs() > 1e-6 {
+                    1.0 / t
+                } else {
+                    1.0 / (t.signum() * 1e-6)
+                }
+            }
+            Self::Ln => {
+                if val.abs() > 1e-9 {
+                    val.abs().ln()
+                } else {
+                    0.0
+                }
+            }
+            Self::Exp => val.clamp(-50.0, 50.0).exp(),
+        }
+    }
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Neg => "-",
+            Self::Abs => "",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Cot => "cot",
+            Self::Exp => "exp",
+            Self::Ln => "ln",
+        }
+    }
+
+    pub fn random(rng: &mut impl Rng) -> Self {
+        Self::ALL[rng.random_range(0..Self::ALL.len())]
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+}
+
+impl BinaryOp {
+    pub const ALL: [BinaryOp; 5] = [
+        BinaryOp::Add,
+        BinaryOp::Sub,
+        BinaryOp::Mul,
+        BinaryOp::Div,
+        BinaryOp::Pow,
+    ];
+
+    pub fn evaluate(self, left: f64, right: f64) -> f64 {
+        match self {
+            Self::Add => left + right,
+            Self::Sub => left - right,
+            Self::Mul => left * right,
+            Self::Div => {
+                if right.abs() > 1e-6 {
+                    left / right
+                } else {
+                    left / (right.signum() * 1e-6)
+                }
+            }
+            Self::Pow => {
+                let r = left.powf(right);
+                let r = if r.is_nan() {
+                    left.abs().powf(right)
+                } else {
+                    r
+                };
+                r.clamp(-1e12, 1e12)
+            }
+        }
+    }
+
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Pow => "^",
+        }
+    }
+
+    pub fn random(rng: &mut impl Rng) -> Self {
+        Self::ALL[rng.random_range(0..Self::ALL.len())]
+    }
+}
+
+pub struct OperatorSet {
+    unary: Vec<UnaryOp>,
+    binary: Vec<BinaryOp>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TreeGenMethod {
+    Grow,
+    Full,
+}
+
+pub struct TreeGenerator<'a, R: Rng> {
+    rng: &'a mut R,
+    ops: &'a OperatorSet,
+    const_range: Range<f64>,
+    max_depth: usize,
+    vars_len: usize,
 }
 
 #[cfg(test)]

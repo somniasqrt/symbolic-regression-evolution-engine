@@ -1,7 +1,15 @@
-use std::fmt::Display;
+use std::ops::Range;
 
 use crate::ast::*;
+use crate::dataset::Dataset;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Fitness {
+    Mse,
+    Mae,
+    LogErr,
+    RSquared,
+}
 #[derive(Clone, Debug)]
 pub struct Individual {
     node: Node,
@@ -35,57 +43,40 @@ impl Individual {
     }
 }
 
-pub struct Dataset {
-    pub names: Vec<String>,    // just names, x y z w pressure etc
-    pub inputs: Vec<Vec<f64>>, // for example x y
-    pub outputs: Vec<f64>,     // for example f(x,y) = z
-                               // |  x  |  y  |  z  |
-                               // | f64 | f64 | f64 | -> | out | f64 |
-                               // | f64 | f64 | f64 |
-                               // inputs[0][1] is first Y
-                               // inputs [1][0] is second X
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub population_size: usize,
+    pub max_depth: usize,
+    pub const_range: Range<f64>,
+    pub unary_ops: Vec<UnaryOp>,
+    pub binary_ops: Vec<BinaryOp>,
+    pub tournament_size: f64,
+    pub elitism: f64,
+    pub p_cross: f64,
+    pub p_mut: f64,
+    pub max_generations: usize,
+    pub target_fitness: f64,
+    pub fitness: Fitness,
+    pub seed: Option<u64>,
 }
 
-impl Dataset {
-    pub fn new(
-        names: Vec<String>,
-        inputs: Vec<Vec<f64>>,
-        outputs: Vec<f64>,
-    ) -> Result<Self, &'static str> {
-        if names.is_empty() || inputs.is_empty() || outputs.is_empty() {
-            return Err("dataset collections cannot be empty");
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            population_size: 500,
+            max_depth: 6,
+            const_range: -10.0..10.0,
+            unary_ops: UnaryOp::ALL.to_vec(),
+            binary_ops: BinaryOp::ALL.to_vec(),
+            tournament_size: 0.01,
+            elitism: 0.01,
+            p_cross: 0.8,
+            p_mut: 0.15,
+            max_generations: 500,
+            target_fitness: 1e-6,
+            fitness: Fitness::Mse,
+            seed: None,
         }
-        if inputs.len() != outputs.len() {
-            return Err("inputs and outputs must be the same len");
-        }
-        let names_len = names.len();
-        if inputs.iter().any(|row| row.len() != names_len) {
-            return Err("names size not same as inputs rows size");
-        }
-        if inputs
-            .iter()
-            .flatten()
-            .chain(outputs.iter())
-            .any(|v| !v.is_finite())
-        {
-            return Err("numbers cannot be infinite");
-        }
-        Ok(Self {
-            names,
-            inputs,
-            outputs,
-        })
-    }
-}
-
-impl Display for Dataset {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{} | y", self.names.join(" | "))?;
-        for (row, out) in self.inputs.iter().zip(&self.outputs) {
-            let cells: Vec<String> = row.iter().map(|v| v.to_string()).collect();
-            writeln!(f, "{} | {}", cells.join(" | "), out)?;
-        }
-        Ok(())
     }
 }
 
@@ -99,6 +90,7 @@ mod tests {
         let dataset = Dataset::new(
             vec!["x".to_string()],
             vec![vec![1.0], vec![2.0], vec![3.0]],
+            "y".to_string(),
             vec![2.0, 4.0, 6.0],
         )
         .expect("Valid dataset");
@@ -117,6 +109,7 @@ mod tests {
         let dataset = Dataset::new(
             vec!["x".to_string()],
             vec![vec![1.0], vec![2.0], vec![3.0]],
+            "y".to_string(),
             vec![2.0, 4.0, 6.0],
         )
         .expect("Valid dataset");
@@ -135,16 +128,5 @@ mod tests {
             expected_mse,
             ind.fitness
         );
-    }
-
-    #[test]
-    fn test_dataset_validation() {
-        assert!(
-            Dataset::new(vec!["x".to_string()], vec![vec![1.0], vec![2.0]], vec![1.0]).is_err()
-        );
-
-        assert!(Dataset::new(vec![], vec![], vec![]).is_err());
-
-        assert!(Dataset::new(vec!["x".to_string()], vec![vec![f64::NAN]], vec![1.0]).is_err());
     }
 }
