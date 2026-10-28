@@ -1,15 +1,6 @@
-use std::ops::Range;
-
 use crate::ast::*;
 use crate::dataset::Dataset;
 
-#[derive(Debug, Clone, Copy)]
-pub enum Fitness {
-    Mse,
-    Mae,
-    LogErr,
-    RSquared,
-}
 #[derive(Clone, Debug)]
 pub struct Individual {
     node: Node,
@@ -40,43 +31,6 @@ impl Individual {
                 .sum::<f64>();
         self.fitness = if mse.is_finite() { mse } else { f64::INFINITY };
         self.complexity = self.node.count();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub population_size: usize,
-    pub max_depth: usize,
-    pub const_range: Range<f64>,
-    pub unary_ops: Vec<UnaryOp>,
-    pub binary_ops: Vec<BinaryOp>,
-    pub tournament_size: f64,
-    pub elitism: f64,
-    pub p_cross: f64,
-    pub p_mut: f64,
-    pub max_generations: usize,
-    pub target_fitness: f64,
-    pub fitness: Fitness,
-    pub seed: Option<u64>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            population_size: 500,
-            max_depth: 6,
-            const_range: -10.0..10.0,
-            unary_ops: UnaryOp::ALL.to_vec(),
-            binary_ops: BinaryOp::ALL.to_vec(),
-            tournament_size: 0.01,
-            elitism: 0.01,
-            p_cross: 0.8,
-            p_mut: 0.15,
-            max_generations: 500,
-            target_fitness: 1e-6,
-            fitness: Fitness::Mse,
-            seed: None,
-        }
     }
 }
 
